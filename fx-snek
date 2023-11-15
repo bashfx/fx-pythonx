@@ -203,7 +203,8 @@
       next=${opts[i+1]}
       case "$this" in
         --spy|-s)
-          opt_spy=0
+          opt_spy=0;
+          opt_init=0;
           ;;
         --clean)
           opt_clean=0;
@@ -705,7 +706,7 @@ EOF
       unlink)  cmd='do_echo'; exc="unlink_profile";;
       clean)   cmd='do_echo'; exc="do_clean";;
       path)    cmd='do_echo'; exc="do_path";;
-      dty)     cmd='do_echo'; exc="do_dev_dty";;
+      dty|dev) cmd='do_echo'; exc="do_dev_dty";;
       add)     cmd='do_echo'; exc="do_add_path";;
       rm)      cmd='do_echo'; exc="do_rm_path";;
       reset)   cmd='do_echo'; exc="do_reset";;
