@@ -17,29 +17,34 @@
   #====================================
 
     PYX_PYTHONPATH=
-    PYX_PYTHONPATH_HOME="$HOME/.my/etc/fx/pythonpathx";
-    PYX_RC="$HOME/.pyxrc"
 
+    PYX_RC="$HOME/.pyxrc"
+    PYX_HOME="$HOME/.my/etc/fx/pyx";
+    PYX_PATH_FILE="$PYX_HOME/pythonpath";
+    
     profile_src="$HOME/.profile"
 
+    PYX_AUTO_INIT=
+    PYX_SPY_MODE=
 
   #====================================
-
-  opt_debug=0
+  opt_dev=1
+  opt_debug=1
   opt_quiet=1
   opt_trace=1
   opt_byte=1
   opt_spy=1;
   opt_clean=1;
-
-
+  opt_init=1;
+  opt_yes=1;  
+  opt_boring=1;
 
 #-------------------------------------------------------------------------------
 # Std Term
 #-------------------------------------------------------------------------------
 
-  red=$(tput setaf 1)
-  green=$(tput setaf 2)
+  red=$(tput setaf 197)
+  green=$(tput setaf 41)
   blue=$(tput setaf 39)
   blue2=$(tput setaf 27)
   cyan=$(tput setaf 14)
@@ -65,31 +70,29 @@
   lambda="\xCE\xBB"
   idots="\xE2\x80\xA6"
   gly_py="\u264B︎" #♋︎
-
-
-#----------------------------------------------------
-# PY STANDARD GLYPHS              
-#----------------------------------------------------
-  gly_off="\u2690︎" #⚑
   gly_on="\u2691" #⚐
   gly_py="\u264B︎" #♋︎
 
-
+#----------------------------------------------------
+# PYX  GLYPHS              
+#----------------------------------------------------
 
   export GLYPH_PY=" ${green}${gly_py}PYX ${x}"
   export GLYPH_PY_ERR=" ${red}${gly_py}PYX ${x}"
   export GLYPH_SPY=""
 
-
+  export SNEK="${green}._._|\|\|\_)${red}~${x}"
 
 #-------------------------------------------------------------------------------
 # Printers
 #-------------------------------------------------------------------------------
 
   __logo(){
-    if [ -z "$opt_quiet" ] || [ $opt_quiet -eq 1 ]; then
-      local logo=$(sed -n '3,9 p' $BASH_SOURCE)
-      printf "\n$green${logo//#/ }\n    $gly_py $(python --version)$x\n" 1>&2;
+    if [ $opt_boring -eq 1 ]; then
+      if [ -z "$opt_quiet" ] || [ $opt_quiet -eq 1 ] ; then
+        local logo=$(sed -n '3,9 p' $BASH_SOURCE)
+        printf "\n    $green$gly_py$(python --version)${logo//#/ }\n$x\n" 1>&2;
+      fi
     fi
   }
 
@@ -133,13 +136,15 @@
   error(){ local text=${1:-}; __printf " $text\n" "fail"; }
   fatal(){ trap - EXIT; __printf "\n$red$fail $1 $2 \n"; exit 1; }
 
+  xline(){ stderr "${blue}${LINE}↯\n${x}"; }
+
 #----------------------------------------------------
 #  Py Term
 #----------------------------------------------------
 
-  pyout(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$gly_py $text$x\n" "green"; }
-  stdpy(){ printf "${GLYPH_SPY}${GLYPH_PY}${@}${col_x}\n" 1>&2; }
-  stdpyerr(){ printf "${GLYPH_SPY}${GLYPH_PY_ERR}${col_red}${@}${col_x}\n" 1>&2; }
+  pyout(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$gly_py $text$x" "green"; }
+  stdpy(){ printf "${GLYPH_SPY}${GLYPH_PY}${@}${x}" 1>&2; }
+  stdpyerr(){ printf "${GLYPH_SPY}${GLYPH_PY_ERR}${red}${@}${x}\n" 1>&2; }
 
 #-------------------------------------------------------------------------------
 # Sig / Flow
@@ -183,6 +188,15 @@
         --clean)
           opt_clean=0;
           ;;
+        --init)
+          opt_init=0;
+          ;;
+        --boring)
+          opt_boring=0;
+          ;;
+        --yes)
+          opt_yes=0;
+          ;;
         --byte|-b)
           opt_byte=0
           ;;
@@ -193,6 +207,11 @@
           ;;
         --tra*|-t)
           opt_trace=0
+          opt_debug=0
+          opt_quiet=1
+          ;;
+        --dev|-D)
+          opt_dev=0
           opt_debug=0
           opt_quiet=1
           ;;
@@ -217,9 +236,7 @@
 
 
   do_spy_mode(){
-
     if [ $opt_spy -eq 0 ];  then
-
       if [ -n "$PYTHONPATH" ]; then
         export PYX_DEBUG=0
         export GLYPH_SPY=" ${purple}⨳${x}"
@@ -227,9 +244,7 @@
       else
         stdpyerr "Spy mode cant run without an active PYTHONPATH."
       fi
-
     else
-
       export PYX_DEBUG=1
       GLYPH_SPY=
     fi
@@ -243,49 +258,66 @@
 
   add_path_file(){
     local this_path=$1 ret
-    if [ -f $this_path ]; then
-      if ! grep -q "$this_path" $PYX_PYTHONPATH_HOME; then
-        echo "$this_path" >> $PYX_PYTHONPATH_HOME
+
+    if [ -d $this_path ]; then
+      if ! grep -q "$this_path" $PYX_PATH_FILE; then
+        echo "$this_path" >> $PYX_PATH_FILE
         ret=$?
       else
+        warn "Path already in pathfile! ($this_path)"
         ret=0
       fi
     else
       stdpyerr "File [$this_path] does not exist. Not added to PYTHONPATH"
     fi
 
-    cat "$PYX_PYTHONPATH_HOME"
+    #auto_generate
+    if is_linked; then
+      info "Profile is linked with pyxrc file"
+    else
+      error "Profile missing pyxrc!"
+    fi
+
+    #info "dumping pyxpath file ($PYX_PATH_FILE)"
+    #cat "$PYX_PATH_FILE"
+
   }
 
   rem_path_file(){
     local this_path=$1 ret
-    if grep -q "$this_path" $PYX_PYTHONPATH_HOME; then
-      sed -i.bak "$this_path" "$PYX_PYTHONPATH_HOME"
+    if grep -q "$this_path" $PYX_PATH_FILE; then
+      sed -i.bak "$this_path" "$PYX_PATH_FILE"
     fi
   }
 
   clear_path_file(){
-    if [ -f "$PYX_PYTHONPATH_HOME" ]; then
-      rm "$PYX_PYTHONPATH_HOME" 
+    if [ -f "$PYX_PATH_FILE" ]; then
+      rm "$PYX_PATH_FILE" 
     fi
   }
 
-  make_ppath_st(){
+  load_ppath_file(){
     local THIS_PATH line
-    if [ -f "$PYX_PYTHONPATH_HOME" ]; then
-      while IFS= read -r line; do
-        if [[ -n "$line" ]]; then
-          if [ -d "$line" ]; then
+
+    info "pathfile is $PYX_PATH_FILE"
+
+    if [ -f "$PYX_PATH_FILE" ]; then
+
+      while IFS= read -r row; do
+        if [[ -n "$row" ]]; then
+          if [ -d "$row" ]; then
             if [[ -z "$THIS_PATH" ]]; then
-              THIS_PATH="$line"
+              THIS_PATH="$row"
             else
-              THIS_PATH="$THIS_PATH:$line"
+              THIS_PATH="$THIS_PATH:$row"
             fi
           else
-            stderr "Skipping $line. Dir not found."
+            stderr "Skipping $row. Dir not found."
           fi
         fi
-      done < "$PYX_PYTHONPATH_HOME"
+      done < "$PYX_PATH_FILE"
+
+
     else
       stdpyerr "Cannot build PYTHONPATH missing path file."
     fi
@@ -308,11 +340,11 @@
         p="\$PYTHONPATH"; 
         case ":\$p:" in
           *":\$n:"*) 
-            printx "--> [${gly_py}] unchanged" "green" "pass";
+            printx "--> [pyx] ${gly_py}unchanged" "green" "pass";
           ;;
           *)  
             export PYTHONPATH=\$p:\$n;
-            printx "--> [${gly_py}] changed" "orange" "zap";
+            printx "--> [pyx] ${gly_py}changed" "orange" "zap";
           ;;
         esac
 
@@ -322,31 +354,74 @@ EOF
   }
 
 
+
+
+  is_linked(){
+    grep -q "source ${PYX_RC}" $profile_src; 
+  }
+
+
+  unlink_profile(){
+    local src="$PYX_RC"
+    if grep -q "source ${src}" $profile_src; then
+      sed -i.bak "/source ${src}/d" "$profile_src"
+    fi
+  }
+
+
+  link_profile(){
+    src="$PYX_RC"
+
+    if [ -n "$PYX_PYTHONPATH" ]; then
+      warn "PYX_PYTHONPATH was empty trying to create rc file."
+    fi
+
+    #dump rc file
+    data="$(rc_file_str)"
+    echo -e "$data" > $src
+
+    #link rc file
+    if [ -f "${src}" ]; then
+      if ! grep -q "source ${src}" $profile_src; then
+        echo "source ${src}" >> $profile_src
+        ret=$?
+
+        if [ $opt_debug -eq 0 ]; then 
+          info "Dumping generated pyxrc file"
+          cat "$src"
+        fi
+
+      else
+        #echo "source line already added"
+        ret=0
+      fi
+    else
+      ret=1 
+    fi
+  
+  }
+
+
   make_ppath_rc(){
-    local src data ret=1
+    local src data ret=1 THIS_PATH
     src="$1"
     if [ -n $src ]; then
-      data="$(config_file_str)"
-      echo -e "$data" > ${src}
-      if [ -f "${src}" ]; then
-        if ! grep -q "source ${PYX_RC}" $profile_src; then
-          echo "source ${PYX_RC}" >> $profile_src
-          ret=$?
-        else
-          #echo "source line already added"
-          ret=0
-        fi
+      #build path 
+      THIS_PATH=$(load_ppath_file)
+      if [ -n "$THIS_PATH" ]; then
+        export PYX_PYTHONPATH=$THIS_PATH
+        link_profile
       else
-       ret=1 
+        stdpyerr "Pathfile was empty."
       fi
     fi
     return $ret
   }
 
 
-  init_ppath_rc(){
-    if make_ppath_rc "$PYX_PYTHONPATH_HOME"; then
-      stdpy "Ok cool!"         
+  do_update_ppath(){
+    if make_ppath_rc "$PYX_RC"; then
+      stdpy "Linking ${PYX_RC} to profile."         
     else
       stdpyerr "Oops. couldnt make rc file!"
     fi
@@ -388,50 +463,43 @@ EOF
 #----------------------------------------------------
 
 
-  do_add(){
-    if [[ $@ =~ "add" ]]; then
+  do_add_path(){
+    # python_file_found=false
 
-      python_file_found=false
+    # for f in ./*.py; do
+    #   if [ -f "$f" ]; then
+    #     python_file_found=true
+    #     break
+    #   fi
+    # done
 
-      for f in ./*.py; do
-        if [ -f "$f" ]; then
-          python_file_found=true
-          break
-        fi
-      done
+    # if $python_file_found; then
+    #   add_path_file "${PWD}" 
+    # fi 
 
-      if $python_file_found; then
-        add_path_file "${PWD}" 
-      fi 
+    if [ -f "./sitecustomize.py" ]; then
+      add_path_file "${PWD}" 
+    fi 
 
-      if [ -f "./sitecustomize.py" ]; then
-        add_path_file "${PWD}" 
-      fi 
+    if [ -f "./src" ]; then
+      add_path_file "${PWD}/src" 
+    fi 
 
-      if [ -f "./src" ]; then
-        add_path_file "${PWD}/src" 
-      fi 
+    if [ -f "./bin" ]; then
+      add_path_file "${PWD}/bin" 
+    fi 
 
-      if [ -f "./bin" ]; then
-        add_path_file "${PWD}/bin" 
-      fi 
+    #stdpy "updating PYTHONPATH"
+    #echo -e ${PYTHONPATH//:/\\n}
 
-      stdpy "updating PYTHONPATH"
-      echo -e ${PYTHONPATH//:/\\n}
-
-    fi
   }
 
   do_path(){
-    if [[ $@ =~ "path" ]]; then
-
-      if [ -n "$PYTHONPATH" ]; then
-        stdpy "dumping PYTHONPATH..."
-        echo -e ${PYTHONPATH//:/\\n}
-      else
-        stdpyerr "-> PYTHONPATH empty!"
-      fi
-
+    if [ -n "$PYTHONPATH" ]; then
+      stdpy "dumping PYTHONPATH..."
+      echo -e ${PYTHONPATH//:/\\n}
+    else
+      stdpyerr "-> PYTHONPATH empty!"
     fi
   }
 
@@ -441,18 +509,14 @@ EOF
 
   do_dev_dty(){
     #debug this yo
-    if [[ $@ =~ "dty" ]]; then
-      file=
-
-      [ -f "./debug.py"  ] && file="debug"  || :
-      [ -f "./driver.py" ] && file="driver" || :
-      if [ -n "$file" ]; then
-        stdpy "\n\n${blue}Running debug (-m) in current pwd\n\n\n${LINE}↯\n${x}"
-        python3 -m ${file} --debug 
-      else
-        stdpy "${file} not in cwd" 
-      fi
-
+    local file=
+    [ -f "./debug.py"  ] && file="debug"  || :
+    [ -f "./driver.py" ] && file="driver" || :
+    if [ -n "$file" ]; then
+      stdpy "${blue}Running debug (-m) in current pwd\n\n${x}"
+      python3 -m ${file} --debug 
+    else
+      stdpy "${file} not in cwd" 
     fi
   }
 
@@ -462,7 +526,7 @@ EOF
   
   do_clean(){
     #remove pyc cache
-    stdpy "${blue}-> cleaning ◦°⨀◦${x}\n" #◦⨀°◦ o◎0o0o.⊚◉◦✱.0o❈✻o0o0❆oO※oo⦿°⨀❍◦✱o..
+    stdpy "${blue}-> scrubbing the sneks ${SNEK}${blue} ◦°⨀◦${x}\n" #◦⨀°◦ o◎0o0o.⊚◉◦✱.0o❈✻o0o0❆oO※oo⦿°⨀❍◦✱o..
     find . -type d -name "__pycache__"
     find . -type f -name "*.py[co]" -delete -or -type d -name "__pycache__" -delete;
     [ -f ./dist ] && rm -rf ./dist;
@@ -474,9 +538,30 @@ EOF
     stdpy "done."
   }
 
+
+  do_reset(){
+    stdpy "${blue}-> pulling the teeth ${SNEK}${blue} ◦°⨀◦${x}\n" 
+    {
+      unlink_profile
+      rm -rf "$PYX_HOME"
+      rm "$PYX_RC"
+    } >> "$HOME/pyx-clean.log" 2>&1
+
+    array=(PYX_PATH_FILE PYTHONPATH PYX_AUTO_INIT PYX_SPY_MODE)
+    for var in "${array[@]}"; do
+        unset "$var"
+    done
+
+    stdpy "Done. Restart your terminal to complete"
+
+  }
+
 #----------------------------------------------------
 #            
 #----------------------------------------------------
+  do_snek(){
+    echo -ne "${SNEK}"
+  }
 
   do_build(){
     if [[ $@ =~ "build" ]]; then
@@ -511,26 +596,28 @@ EOF
   do_inspect(){
     declare -F | grep 'do_' | awk '{print $3}'
     _content=$(sed -n -E "s/[[:space:]]+([^#)]+)\)[[:space:]]+cmd[[:space:]]*=[\'\"]([^\'\"]+)[\'\"].*/\1 \2/p" "$0")
-    pyout "$line"
+    pyout "$line\n"
     while IFS= read -r row; do
       info "$row"
     done <<< "$_content"
- }
+  }
 
 
 #-------------------------------------------------------------------------------
 # Main
 #-------------------------------------------------------------------------------
 
-  pyx_init(){
+  do_init(){
 
     #preload commands
     #clean
     #spy
-
-    [ ! -f "$PYX_PYTHONPATH_HOME" ] && touch "$PYX_PYTHONPATH_HOME"
-    [ ! -f "$PYX_RC" ] && touch "$PYX_RC"
-    do_spy_mode
+    if [ $opt_init -eq 0 ]; then
+      [ ! -d "$PYX_HOME" ] && mkdir -p "$PYX_HOME" || :
+      [ ! -f "$PYX_PATH_FILE" ] && touch "$PYX_PATH_FILE"
+      [ ! -f "$PYX_RC" ] && touch "$PYX_RC"
+      do_spy_mode
+    fi
 
   }
 
@@ -548,41 +635,54 @@ EOF
 
   do_echo(){
     local cmd
-    echo -ne "\n$line\n\n"
-    stderr "\t--> $1 $2 $3 $4 $5 $6 <--\n"
-    stderr "\t$opt_debug \t opt_debug"
-    stderr "\t$opt_trace \t opt_trace"
-    stderr "\t$opt_quiet \t opt_quiet"
-    stderr "\t$opt_byte \t opt_byte"
-    stderr "\t$opt_clean \t opt_clean"
-    stderr "\t$opt_spy \t opt_spy"
-    echo -ne "\n\n"
 
-    cmd="${1#[}"
-    cmd="${cmd%%]}"
 
-    if __confirm "Execute tested command? ${purple}$cmd${x} (y/n/q)"; then
-      echo -ne "\n\n"
-      $cmd
+    cmd="${1#[[[}"
+    cmd="${cmd%%]]]}"
+
+    if [ $opt_dev -eq 0 ]; then
+
+      echo -ne "\n\n$line\n\n"
+      stderr "\t--> $1 $2 $3 $4 $5 $6 <--\n"
+      stderr "\t$opt_debug opt_debug  \t$opt_trace opt_trace"
+      stderr "\t$opt_quiet opt_quiet  \t$opt_byte opt_byte"
+      stderr "\t$opt_clean opt_clean  \t$opt_init opt_init"
+      stderr "\t$opt_spy   opt_spy  \t$opt_yes opt_yes"
+      echo -ne "\n$line\n\n\n"
+
+      if __confirm "Execute requested command? ${purple}$cmd${x} (y/n/q)"; then
+        echo -ne "\n\n"
+        xline
+        $cmd
+      else
+        stdpyerr "you didnt do it"
+      fi
+
     else
-      stdpyerr "you didnt do it"
+      echo -ne "\n\n"
+      xline
+      $cmd
     fi
+
   }
 
 
 
   dispatch(){
-
     local call="$1" arg="$2" cmd= ret;
+    do_init
     case $call in
       run)     cmd='do_echo';;
-      init)    cmd='do_echo'; exc="pyx_init";;
+      init)    cmd='do_echo'; exc="do_init";;
+      upd*)    cmd='do_echo'; exc="do_update_ppath";;
       clean)   cmd='do_echo'; exc="do_clean";;
       path)    cmd='do_echo'; exc="do_path";;
       dty)     cmd='do_echo'; exc="do_dev_dty";;
-      add)     cmd='do_echo'; exc="do_add -> do_add_path";;
+      add)     cmd='do_echo'; exc="do_add_path";;
       rm)      cmd='do_echo'; exc="do_rm_path";;
-      insp*)   cmd='do_inspect';;
+      reset)   cmd='do_echo'; exc="do_reset";;
+      snek)    cmd='do_snek'; exc="do_snek";;
+      insp*|i) cmd='do_inspect';;
       help|\?) cmd="usage";;
       *)
         if [ ! -z "$call" ]; then
@@ -595,8 +695,7 @@ EOF
       trace "< $call | $cmd [$arg] [$*] >";
 
       if [[ $cmd == "do_echo" ]]; then
-        warn "echo call!"
-        "$cmd" "[$exc]" "$arg" $@   
+        "$cmd" "[[[$exc]]]" "$arg" $@   
       else
         "$cmd" "$arg" $@  "'$exc'" # Pass all extra arguments if cmd is defined
       fi
@@ -604,16 +703,14 @@ EOF
     fi
 
     [ -n "$err" ] && fatal "$err";
+    echo -ne "\n\n"
     return $ret;
 
   }
 
 
   main(){
-    #config_load;
-    #rc_load;
     __logo
-    #pyx_init
     dispatch "${args[@]}";ret=$?
   }
 
