@@ -16,9 +16,11 @@
 #$ autobuild: 00001
 #
 #
-#
-#
-#
+# Note
+# - very alpha version!
+# - turned a janky script file into a full on fx
+# - dumped a bunch of funcs, some redundant or unused -- cleanup
+# - renamed from pyx -> snek more fun
 #
 #-------------------------------------------------------------------------------
 #=====================================code!=====================================
@@ -42,7 +44,9 @@
     PYX_AUTO_INIT=
     PYX_SPY_MODE=
 
+
   #====================================
+
   opt_dev=1
   opt_debug=1
   opt_quiet=1
@@ -92,10 +96,9 @@
 # PYX  GLYPHS              
 #----------------------------------------------------
 
-  export GLYPH_PY=" ${green}${gly_py}PYX ${x}"
-  export GLYPH_PY_ERR=" ${red}${gly_py}PYX ${x}"
+  export GLYPH_PY=" ${green}${gly_py}SNEK ${x}"
+  export GLYPH_PY_ERR=" ${red}${gly_py}SNEK ${x}"
   export GLYPH_SPY=""
-
   export SNEK="${green}._._|\|\|\_)${red}~${x}"
 
 #-------------------------------------------------------------------------------
@@ -143,9 +146,9 @@
 
   stderr(){ printf "${@}${x}\n" 1>&2; }
 
-  warn(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$delta $text$x\n" "orange"; }
-  okay(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$pass $text$x\n" "green"; }
-  info(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] && __printf "$lambda $text\n" "blue"; }
+  warn(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf " $delta $text$x\n" "orange"; }
+  okay(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf " $pass $text$x\n" "green"; }
+  info(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] && __printf " $lambda $text\n" "blue"; }
 
   trace(){ local text=${1:-}; [ $opt_trace -eq 0 ] && __printf "$idots $text\n" "grey"; }
   error(){ local text=${1:-}; __printf " $text\n" "fail"; }
@@ -156,6 +159,7 @@
 #----------------------------------------------------
 #  Py Term
 #----------------------------------------------------
+# hmm 
 
   pyout(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$gly_py $text$x" "green"; }
   stdpy(){ printf "${GLYPH_SPY}${GLYPH_PY}${@}${x}" 1>&2; }
@@ -164,7 +168,8 @@
 #-------------------------------------------------------------------------------
 # Sig / Flow
 #-------------------------------------------------------------------------------
-    
+# probably dont need traps we'll see
+
   command_exists(){ type "$1" &> /dev/null; }
 
   handle_interupt(){ E="$?";  kill 0; exit $E; }
@@ -379,7 +384,9 @@ EOF
   unlink_profile(){
     local src="$PYX_RC"
     if grep -q "source ${src}" $profile_src; then
-      sed -i.bak "/source ${src}/d" "$profile_src"
+      sed -i.bak '/source .*\.pyxrc/d' "$HOME/.profile"
+    else
+      warn "Nothing to unlink..."
     fi
   }
 
@@ -479,6 +486,9 @@ EOF
 
 
   do_add_path(){
+
+    # do we really want to add any old path ?
+
     # python_file_found=false
 
     # for f in ./*.py; do
@@ -511,7 +521,7 @@ EOF
 
   do_path(){
     if [ -n "$PYTHONPATH" ]; then
-      stdpy "dumping PYTHONPATH..."
+      stdpy "whats in PYTHONPATH..."
       echo -e ${PYTHONPATH//:/\\n}
     else
       stdpyerr "-> PYTHONPATH empty!"
@@ -555,12 +565,12 @@ EOF
 
 
   do_reset(){
-    stdpy "${blue}-> pulling the teeth ${SNEK}${blue} ◦°⨀◦${x}\n" 
-    {
+    stdpy "${blue}-> cleaning away the sneks ${SNEK}${blue} ◦°⨀◦${x}\n" 
+    #  {
       unlink_profile
-      rm -rf "$PYX_HOME"
-      rm "$PYX_RC"
-    } >> "$HOME/pyx-clean.log" 2>&1
+      [ -d $PYX_HOME ] && rm -rf "$PYX_HOME" || : 
+      [ -f $PYX_RC ] && rm "$PYX_RC" || : 
+    #  } >> "$HOME/pyx-clean.log" 2>&1
 
     array=(PYX_PATH_FILE PYTHONPATH PYX_AUTO_INIT PYX_SPY_MODE)
     for var in "${array[@]}"; do
@@ -665,12 +675,14 @@ EOF
       stderr "\t$opt_spy   opt_spy  \t$opt_yes opt_yes"
       echo -ne "\n$line\n\n\n"
 
-      if __confirm "Execute requested command? ${purple}$cmd${x} (y/n/q)"; then
-        echo -ne "\n\n"
-        xline
-        $cmd
-      else
-        stdpyerr "you didnt do it"
+      if [ -n "$cmd" ]; then
+        if __confirm "Execute requested command? ${purple}$cmd${x} (y/n/q)"; then
+          echo -ne "\n\n"
+          xline
+          $cmd
+        else
+          stdpyerr "you didnt do it"
+        fi
       fi
 
     else
@@ -690,13 +702,14 @@ EOF
       run)     cmd='do_echo';;
       init)    cmd='do_echo'; exc="do_init";;
       upd*)    cmd='do_echo'; exc="do_update_ppath";;
+      unlink)  cmd='do_echo'; exc="unlink_profile";;
       clean)   cmd='do_echo'; exc="do_clean";;
       path)    cmd='do_echo'; exc="do_path";;
       dty)     cmd='do_echo'; exc="do_dev_dty";;
       add)     cmd='do_echo'; exc="do_add_path";;
       rm)      cmd='do_echo'; exc="do_rm_path";;
       reset)   cmd='do_echo'; exc="do_reset";;
-      snek|hi)    cmd='do_snek'; exc="do_snek";;
+      snek|hi) cmd='do_snek'; exc="do_snek"; opt_boring=0;;
       insp*|i) cmd='do_inspect';;
       help|\?) cmd="usage";;
       *)
@@ -708,7 +721,7 @@ EOF
 
     if [ -n "$cmd" ]; then
       trace "< $call | $cmd [$arg] [$*] >";
-
+      __logo #<-- print the pretty
       if [[ $cmd == "do_echo" ]]; then
         "$cmd" "[[[$exc]]]" "$arg" $@   
       else
@@ -725,7 +738,6 @@ EOF
 
 
   main(){
-    __logo
     dispatch "${args[@]}";ret=$?
   }
 
