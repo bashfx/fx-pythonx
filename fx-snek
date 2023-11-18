@@ -62,6 +62,7 @@
   opt_clean=1;
   opt_init=1;
   opt_yes=1;  
+  opt_here=1;  
   opt_boring=1;
 
 #-------------------------------------------------------------------------------
@@ -86,6 +87,7 @@
   fail="\xE2\x9C\x97"
   lambda="\xCE\xBB"
   idots="\xE2\x80\xA6"
+  bolt="\xE2\x86\xAF"
   gly_py="\u264B︎" #♋︎
   gly_on="\u2691" #⚐
   gly_off="\u2690" #⚐
@@ -168,7 +170,7 @@
 # hmm 
 
   pyout(){ local text=${1:-} force=${2:-1}; [ $force -eq 0 ] || [ $opt_debug -eq 0 ] &&__printf "$gly_py $text$x" "green"; }
-  stdpy(){ printf "${GLYPH_SPY}${GLYPH_PY}${@}${x}" 1>&2; }
+  stdpy(){ printf "${GLYPH_SPY}${GLYPH_PY}${@}${x}\n" 1>&2; }
   stdpyerr(){ printf "${GLYPH_SPY}${GLYPH_PY_ERR}${red}${@}${x}\n" 1>&2; }
   stdpywarn(){ printf "${GLYPH_SPY}${GLYPH_PY_WARN}${orange}${@}${x}\n" 1>&2; }
 
@@ -224,6 +226,9 @@
           ;;
         --yes)
           opt_yes=0;
+          ;;
+        --here)
+          opt_here=0;
           ;;
         --byte|-b)
           opt_byte=0
@@ -290,27 +295,35 @@
 
 
   add_path_file(){
-    local this_path=$1 ret
+
+    local this_path=$1 ret=1
 
     if [ -d $this_path ]; then
-      if ! grep -q "$this_path" $PYX_PATH_FILE; then
-        echo "$this_path" >> $PYX_PATH_FILE
-        ret=$?
+
+      if [ -f $PYX_PATH_FILE ]; then
+        if ! grep -q "$this_path" $PYX_PATH_FILE; then
+          echo "$this_path" >> $PYX_PATH_FILE
+          ret=$?
+
+          #auto_generate
+          if is_linked; then
+            info "Profile is linked with pyxrc file. Regen?"
+          else
+            error "Profile missing pyxrc! Wont autoload"
+          fi
+
+        else
+          stdpywarn "Path already in pathfile! ($this_path)"
+        fi
       else
-        warn "Path already in pathfile! ($this_path)"
-        ret=0
+        stdpyerr "cant add path without a pathfile. try --init flag"
       fi
+
     else
       stdpyerr "File [$this_path] does not exist. Not added to PYTHONPATH"
     fi
 
-    #auto_generate
-    if is_linked; then
-      info "Profile is linked with pyxrc file"
-    else
-      error "Profile missing pyxrc!"
-    fi
-
+    return $ret
 
   }
 
@@ -406,11 +419,19 @@ EOF
 
 
   link_profile(){
-    src="$PYX_RC"
+    local msg src="$PYX_RC"
 
-    if [ -n "$PYX_PYTHONPATH" ]; then
-      warn "PYX_PYTHONPATH was empty trying to create rc file." 0
+    if [ -z "$PYX_PYTHONPATH" ]; then
+      msg="PYX_PYTHONPATH was empty trying to create rc file." 
+      if [ $opt_here -eq 1 ]; then
+          stdpyerr "$msg Exiting."
+          exit
+        else
+          stdpywarn "$msg"
+      fi
     fi
+
+
 
     #dump rc file
     data="$(rc_file_str)"
@@ -505,53 +526,50 @@ EOF
 #            
 #----------------------------------------------------
 
-
-  do_add_path(){
-
-    # do we really want to add any old path ?
-
-    # python_file_found=false
-
-    # for f in ./*.py; do
-    #   if [ -f "$f" ]; then
-    #     python_file_found=true
-    #     break
-    #   fi
-    # done
-
-    # if $python_file_found; then
-    #   add_path_file "${PWD}" 
-    # fi 
-    this=1
-    if [ -f "./bin" ]; then
-      add_path_file "${PWD}/bin" 
-      this=0
+  do_pythonable(){
+    local this=
+    if [ -d "./bin" ]; then
+      this="${PWD}/bin" 
     fi 
 
-    if [ -f "./src" ]; then
-      add_path_file "${PWD}/src" 
-      this=0
+    if [ -d "./src" ]; then
+      this="${PWD}/src" 
     fi 
 
     if [ -f "./sitecustomize.py" ]; then
-      add_path_file "${PWD}"
-      this=0
+      this="${PWD}/sitecustomize.py"
     fi 
 
-    if [ $this -eq 1 ]; then
-      warn "No suitable PYTHONPATH located."
-    else
-      info "Hey you did it!"
+    if [ $opt_here -eq 0 ]; then
+      this="${PWD}"
     fi
 
-    #stdpy "updating PYTHONPATH"
-    #echo -e ${PYTHONPATH//:/\\n}
+    for f in ./*.py; do
+      if [ -f "$f" ]; then
+        this="${PWD}" 
+        break
+      fi
+    done
 
+    if [ -z "$this" ]; then
+      stdpyerr "did not find a pythonable path here."
+    else
+      echo $this
+    fi
+  }
+
+  do_add_path(){
+    local ret=1 this=$(do_pythonable)
+    if [ -n "$this" ]; then
+      add_path_file "${this}"
+      ret=$?
+      [ $ret -eq 0 ] && stdpy "added path to snek's pathfile. ($this)"
+    fi
   }
 
   do_path(){
     if [ -n "$PYTHONPATH" ]; then
-      stdpy "whats in PYTHONPATH..."
+      stdpy "PYTHONPATH:"
       echo -e ${PYTHONPATH//:/\\n}
     else
       stdpyerr "-> PYTHONPATH empty!"
@@ -576,19 +594,23 @@ EOF
     fi
   }
 
+  do_pip_pak(){
+    :
+    pip install -e .
+  }
 #----------------------------------------------------
 #            
 #----------------------------------------------------
   
   do_clean(){
     #remove pyc cache
-    stdpy "${blue}-> scrubbing the sneks ${SNEK}${blue} ◦°⨀◦${x}\n" #◦⨀°◦ o◎0o0o.⊚◉◦✱.0o❈✻o0o0❆oO※oo⦿°⨀❍◦✱o..
+    stdpy "${blue}-> scrubbing the sneks ${SNEK}${blue} ◦°⨀◦${x}" #◦⨀°◦ o◎0o0o.⊚◉◦✱.0o❈✻o0o0❆oO※oo⦿°⨀❍◦✱o..
 
     if [[ "$PWD" != "$HOME" ]]; then
       find . -type d -name "__pycache__"
       find . -type f -name "*.py[co]" -delete -or -type d -name "__pycache__" -delete;
     else
-      stdpywarn "refused to clean your entire \$HOME. \n" 0
+      stdpywarn "refused to clean your entire \$HOME.\n" 0
     fi
 
     [ -f ./dist ] && rm -rf ./dist;
@@ -609,7 +631,7 @@ EOF
         funsnek
       fi
 
-      stdpy "${blue}-> forgot all the stuff! ${blue} ◦°⨀◦${x}\n" 
+      stdpy "${blue}-> forgot all the stuff! ${blue} ◦°⨀◦${x}" 
       #  {
         unlink_profile
         [ -d $PYX_HOME ] && rm -rf "$PYX_HOME" || : 
@@ -672,13 +694,14 @@ EOF
     fi
   }
 
-  do_peekabo(){
-    stdpy "python -> $(which python)\n"
-    stdpy "python3 -> $(which python3)\n"
-    [ -f "$PYX_RC" ] && stdpy "snekrc -> $PYX_RC\n" || stdpywarn "No Snek Rc File!"
-    [ -n $(which funsnek) ] && stdpy "funsnek -> can doodle!\n" || stdpywarn "Funsnek cant doodle..\n."
+  do_peekaboo(){
+    stdpy "-> python -> $(which python)"
+    stdpy "-> python3 -> $(which python3)"
+    [ -f "$PYX_PATH_FILE" ] && stdpy "-> snekrc -> $PYX_PATH_FILE" || stdpywarn "-> snekrc -> No Pathfile!"
+    [ -f "$PYX_RC" ] && stdpy "-> snekrc -> $PYX_RC" || stdpywarn "-> snekrc -> No Config File!"
+    [ -n $(which funsnek) ] && stdpy "-> funsnek -> can doodle!" || stdpywarn "-> funsnek cant doodle..."
     do_path
-    usage
+    
   }
 
 
@@ -724,8 +747,6 @@ EOF
 
   do_echo(){
     local cmd
-
-    do_peekabo
 
     cmd="${1#[[[}"
     cmd="${cmd%%]]]}"
@@ -778,7 +799,8 @@ EOF
       rm)      cmd='do_echo'; exc="do_rm_path";;
       reset)   cmd='do_echo'; exc="do_reset";;
       snek|hi) cmd='do_snek'; opt_boring=0;;
-      peek)    cmd='do_peekabo';;
+      peek)    cmd='do_peekaboo';;
+      here)    cmd='do_pythonable';;
       ez)      cmd='do_ez';;
       insp*|i) cmd='do_inspect';;
       help|\?) cmd="usage";;
@@ -791,9 +813,9 @@ EOF
 
     if [ -n "$cmd" ]; then
 
-      info "< $call | $cmd [$arg] [$*] >";
+      #info "< $call | $cmd [$arg] [$*] >";
       __logo #<-- print the pretty
-      info "$cmd $exc"
+      #info "$cmd $exc"
       do_init
       if [[ $cmd == "do_echo" ]]; then
         "$cmd" "[[[$exc]]]" "$arg" $@   
