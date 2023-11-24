@@ -388,7 +388,7 @@
           ;;
           *)  
             export PYTHONPATH=\$p:\$n;
-            printx "--> [pypath] changed" "green" "zap";
+            printx "--> [pypath] changed" "green" "bolt";
           ;;
         esac
         if [ -z "\$PYTHONPATH" ]; then
